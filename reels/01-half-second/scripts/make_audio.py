@@ -236,7 +236,7 @@ def build():
     place(sfx, boom(1.8), DROP, 0.8)                       # hook frame
     place(sfx, whoosh(0.3, 800, 8000, False), 4.98, 0.35)  # whip turn
     place(sfx, whoosh(0.25, 600, 6000, True), 5.47, 0.25)  # split-screen wipe
-    place(sfx, kick(0.5, 90, 38, 0.6), 6.2, 0.75)          # bottle lands
+    place(sfx, kick(0.5, 90, 38, 0.6), 6.133, 0.75)        # bottle lands (frame 184)
     place(sfx, whoosh(0.4, 600, 9000, True), 8.47, 0.22)   # reverse whip
     place(sfx, riser(1.0), 10.9, 0.45)
     place(sfx, tick(4800), 11.5, 0.4)
@@ -253,7 +253,7 @@ def build():
     return music, sfx
 
 
-def master(x, peak=0.89):
+def master(x, peak=0.75):
     fade = np.ones(N)
     fade[-int(0.35 * SR):] = np.linspace(1, 0, int(0.35 * SR))
     x = x * fade[:, None]

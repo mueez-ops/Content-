@@ -398,10 +398,10 @@ def split3(f, f0):
     """Three vertical panels revealed with staggered mask wipes (archival split)."""
     img = Image.new("RGB", (W, H), (8, 8, 8))
     k = f - f0
-    srcs = [bw(shot("cap_macro", 9 + k)), shot("label_macro", 6 + k // 2), bw(shot("glass_macro", 1 + k))]
+    srcs = [bw(shot("glass_macro", 1 + k)), shot("label_macro", 6 + k // 2), bw(shot("cap_macro", 9 + k))]
     pw = W // 3
     for i, s in enumerate(srcs):
-        p = ease_out(prog(f, f0 + i * 2, f0 + i * 2 + 6))
+        p = ease_out(prog(f, f0 + i * 2 - 2, f0 + i * 2 + 5))
         if p <= 0:
             continue
         crop = s.crop((W // 2 - pw // 2 + (i - 1) * 120, 0, W // 2 + pw // 2 + (i - 1) * 120, H))
@@ -422,9 +422,9 @@ def cuts():
         (143, 150, lambda f: (shot("label_macro", f - 142), "color")),
         (150, 165, lambda f: (shot("whip", f - 149), "color")),
         (165, 180, lambda f: (split3(f, 165), "bw")),
-        (180, 195, lambda f: (shot("drop", f - 179), "color")),
+        (180, 195, lambda f: (shot("drop", f - 177), "color")),  # enters already falling
         (195, 225, lambda f: (bw(shot("sweep", f - 194)) if f < 210 else shot("sweep", f - 194), "bw" if f < 210 else "color")),
-        (225, 233, lambda f: (bw(zoom(shot("cap_macro", f - 212), 1.15)), "bw")),
+        (225, 233, lambda f: (bw(zoom(shot("glass_macro", f - 220), 1.15)), "bw")),
         (233, 240, lambda f: (shot("label_macro", f - 227), "color")),
         (240, 255, lambda f: (shot("whip", 255 - f), "color")),
         (255, 360, lambda f: (shot_blend("hero", 1 + (f - 255) * (shot_count("hero") - 1) / 104), "color")),
@@ -458,11 +458,12 @@ def sec_half(f):
     elif fr < 180:
         rise_text(img, "A signature.", font(SERIF_I, 170), (W / 2, 1000), BONE, fr, 167, 5, anchor="ms")
     elif fr < 195:
-        if fr >= 186:
-            draw_text(img, "N°05", font(MONO, 34), (80, 300), BONE, tracking=4, alpha=prog(fr, 186, 189))
+        if fr >= 184:
+            draw_text(img, "N°05", font(MONO, 34), (80, 300), BONE, tracking=4, alpha=prog(fr, 184, 187))
             draw_text(img, "EAU DE PARFUM", font(MONO, 34), (W - 80, 300), BONE, anchor="rs", tracking=4,
-                      alpha=prog(fr, 186, 189))
+                      alpha=prog(fr, 184, 187))
     elif fr < 225:
+        img = grad_overlay(img, True, 900, 0.5)
         notes = [("TOP", "bergamot"), ("HEART", "amber"), ("BASE", "oud")]
         d = ImageDraw.Draw(img)
         for i, (k, v) in enumerate(notes):
@@ -486,9 +487,13 @@ def sec_half(f):
             p = ease_out(prog(fr, 312, 320))
             if p > 0:
                 fm = font(MONO_B, 36)
-                txt = "SHOP THE DROP  →"
-                tw = text_w(txt, fm, 4)
-                draw_text(img, txt, fm, (W / 2, 650), ACCENT, anchor="ms", tracking=4, alpha=p)
+                txt = "SHOP THE DROP"
+                tw = text_w(txt, fm, 4) + 70
+                draw_text(img, txt, fm, (W / 2 - 35, 650), ACCENT, anchor="ms", tracking=4, alpha=p)
+                ax = W / 2 + tw / 2 - 40  # arrow drawn by hand (the mono font has no arrow glyph)
+                d = ImageDraw.Draw(img)
+                d.line([(ax, 638), (ax + 40, 638)], fill=ACCENT, width=4)
+                d.line([(ax + 26, 626), (ax + 40, 638), (ax + 26, 650)], fill=ACCENT, width=4)
                 ImageDraw.Draw(img).line([(W / 2 - tw / 2, 668), (W / 2 - tw / 2 + tw * p, 668)], fill=ACCENT, width=3)
     # Running counter: the whole Halfsecond version is still sold inside the first beat.
     if fr < 255:
@@ -499,7 +504,7 @@ def sec_half(f):
 # ------------------------------------------------------------------ D: end card
 def sec_end(f):
     img = Image.new("RGB", (W, H), PAPER)
-    logo(img, W / 2, 720, 1.12, f, 361)
+    logo(img, W / 2, 720, 1.12, f, 359)
     rise_text(img, "Your brand next?", font(SERIF, 132), (W / 2, 1060), INK, f, 374, 7, anchor="ms")
     rise_text(img, "DM us.", font(SERIF_I, 132), (W / 2, 1200), ACCENT, f, 382, 7, anchor="ms")
     p = prog(f, 392, 400)
@@ -574,7 +579,8 @@ def main():
     silent = os.path.join(build, "picture.mp4")
     enc = subprocess.Popen([
         "ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
-        "-i", "-", "-c:v", "libx264", "-preset", "slow", "-crf", "16", "-pix_fmt", "yuv420p",
+        "-i", "-", "-c:v", "libx264", "-preset", "slow", "-tune", "grain", "-crf", "18", "-maxrate", "20M", "-bufsize", "40M",
+        "-pix_fmt", "yuv420p",
         "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", silent], stdin=subprocess.PIPE)
     for f in fr:
         enc.stdin.write(frame(f).tobytes())
