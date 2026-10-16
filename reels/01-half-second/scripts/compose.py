@@ -689,20 +689,20 @@ def sec_half(f):
             draw_text(img, "N°05  ·  EAU DE PARFUM", font(MONO, 32), (W / 2, 560), INK, anchor="ms",
                       tracking=4, alpha=prog(fr, 262, 268))
         else:
-            draw_text(img, "VELOUR  N°05", font(MONO, 32), (W / 2, 250), INK, anchor="ms", tracking=6)
-            rise_text(img, "20% off,", font(SERIF, 150), (W / 2, 420), INK, fr, 300, 6, anchor="ms")
-            rise_text(img, "this week only.", font(SERIF_I, 150), (W / 2, 560), INK, fr, 304, 6, anchor="ms")
+            draw_text(img, "VELOUR  N°05", font(MONO, 32), (W / 2, 215), INK, anchor="ms", tracking=6)
+            rise_text(img, "20% off,", font(SERIF, 150), (W / 2, 370), INK, fr, 300, 6, anchor="ms")
+            rise_text(img, "this week only.", font(SERIF_I, 150), (W / 2, 505), INK, fr, 304, 6, anchor="ms")
             p = ease_out(prog(fr, 312, 320))
             if p > 0:
                 fm = font(MONO_B, 36)
                 txt = "SHOP THE DROP"
                 tw = text_w(txt, fm, 4) + 70
-                draw_text(img, txt, fm, (W / 2 - 35, 650), INK, anchor="ms", tracking=4, alpha=p)
+                draw_text(img, txt, fm, (W / 2 - 35, 585), INK, anchor="ms", tracking=4, alpha=p)
                 ax = W / 2 + tw / 2 - 40  # arrow drawn by hand (the mono font has no arrow glyph)
                 d = ImageDraw.Draw(img)
-                d.line([(ax, 638), (ax + 40, 638)], fill=INK, width=4)
-                d.line([(ax + 26, 626), (ax + 40, 638), (ax + 26, 650)], fill=INK, width=4)
-                ImageDraw.Draw(img).line([(W / 2 - tw / 2, 668), (W / 2 - tw / 2 + tw * p, 668)], fill=INK, width=3)
+                d.line([(ax, 573), (ax + 40, 573)], fill=INK, width=4)
+                d.line([(ax + 26, 561), (ax + 40, 573), (ax + 26, 585)], fill=INK, width=4)
+                ImageDraw.Draw(img).line([(W / 2 - tw / 2, 603), (W / 2 - tw / 2 + tw * p, 603)], fill=INK, width=3)
     # Running counter: the whole Halfsecond version is still sold inside the first beat.
     if fr < 255:
         draw_text(img, f"{(fr - 120) / 30:04.1f}s", font(MONO, 30), (W - 80, 148), (200, 190, 175), anchor="rs", tracking=2)
