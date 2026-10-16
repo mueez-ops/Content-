@@ -1,0 +1,3 @@
+# Regenerable: run scripts/render_all.sh (≈1.5 h on 4 CPU cores)
+renders/
+build/picture.mp4
