@@ -5,7 +5,7 @@
 
 Timeline (30 fps, 120 BPM => 1 beat = 15 frames):
     f000-029  0.0-1.0s   "0.5s" stopwatch card
-    f030-119  1.0-4.0s   boring ad in a feed, thumb scrolls past, X
+    f030-119  1.0-4.0s   boring ad in a realistic phone feed, flick-scrolls past, X
     f120-359  4.0-12.0s  Halfsecond version, every cut on the beat grid
     f360-449  12.0-15.0s end card
 Style parameters live in STYLE; shot/timecode decisions live in CUTS and the section functions.
@@ -238,159 +238,367 @@ def sec_intro(f):
 
 
 # ------------------------------------------------------------------ B: boring ad
-SCREEN = (100, 250, 980, 1814)  # phone screen inside the frame (9:16-ish)
+# A realistic, unbranded phone + social feed. Geometry in iOS points (screen = 393 pt wide),
+# drawn at 2x and downsampled for clean anti-aliased edges.
+PHONE = (140, 196, 940, 1862)          # outer body on the canvas
+BEZEL, FRAME_W, R_OUT = 22, 7, 120
+SCREEN = (PHONE[0] + BEZEL, PHONE[1] + BEZEL, PHONE[2] - BEZEL, PHONE[3] - BEZEL)
 SW, SH = SCREEN[2] - SCREEN[0], SCREEN[3] - SCREEN[1]
+R_SCR = R_OUT - BEZEL
+K = 2                                  # supersampling
+PT = SW / 393                          # px per point at 1x
+STATUS_PT, HEADER_PT, TAB_PT = 54, 44, 83
+UI_TXT, UI_GREY, UI_LINE, UI_LINK = (0, 0, 0), (115, 115, 115), (219, 219, 219), (0, 55, 107)
+
+
+def _pt(v, k=K):
+    return v * PT * k
+
+
+def _icon(d, kind, x, y, s, k=K, fill=UI_TXT, w=1.9):
+    """Line icons in a generic iOS style; (x, y) is the icon centre in points, s its size in points."""
+    P = lambda a, b: (_pt(x + a * s / 2, k), _pt(y + b * s / 2, k))
+    lw = max(1, int(_pt(w, k)))
+    if kind == "heart":
+        pts = []
+        for i in range(73):
+            t = math.radians(i * 5)
+            hx = 16 * math.sin(t) ** 3
+            hy = -(13 * math.cos(t) - 5 * math.cos(2 * t) - 2 * math.cos(3 * t) - math.cos(4 * t))
+            pts.append(P(hx / 17, (hy + 2) / 17))
+        d.line(pts, fill=fill, width=lw, joint="curve")
+    elif kind == "comment":
+        d.ellipse([P(-0.92, -0.85), P(0.92, 0.85)], outline=fill, width=lw)
+        d.line([P(-0.62, 0.62), P(-0.9, 0.98), P(-0.32, 0.82)], fill=(255, 255, 255), width=lw * 2)
+        d.line([P(-0.62, 0.6), P(-0.9, 0.98), P(-0.36, 0.84)], fill=fill, width=lw, joint="curve")
+    elif kind == "share":
+        d.line([P(-0.95, -0.8), P(0.95, -0.8), P(0.05, 0.95), P(-0.12, -0.12), P(-0.95, -0.8)], fill=fill, width=lw, joint="curve")
+        d.line([P(-0.12, -0.12), P(0.95, -0.8)], fill=fill, width=lw)
+    elif kind == "bookmark":
+        d.line([P(-0.7, -0.95), P(0.7, -0.95), P(0.7, 0.95), P(0, 0.4), P(-0.7, 0.95), P(-0.7, -0.95)], fill=fill, width=lw, joint="curve")
+    elif kind == "home":
+        d.polygon([P(-0.9, -0.05), P(0, -0.92), P(0.9, -0.05), P(0.9, 0.95), P(0.25, 0.95), P(0.25, 0.35),
+                   P(-0.25, 0.35), P(-0.25, 0.95), P(-0.9, 0.95)], fill=fill)
+    elif kind == "search":
+        d.ellipse([P(-0.85, -0.85), P(0.45, 0.45)], outline=fill, width=lw)
+        d.line([P(0.35, 0.35), P(0.95, 0.95)], fill=fill, width=lw)
+    elif kind == "plus":
+        d.rounded_rectangle([P(-0.9, -0.9), P(0.9, 0.9)], radius=_pt(s * 0.22, k), outline=fill, width=lw)
+        d.line([P(0, -0.45), P(0, 0.45)], fill=fill, width=lw)
+        d.line([P(-0.45, 0), P(0.45, 0)], fill=fill, width=lw)
+    elif kind == "play":
+        d.rounded_rectangle([P(-0.9, -0.9), P(0.9, 0.9)], radius=_pt(s * 0.22, k), outline=fill, width=lw)
+        d.polygon([P(-0.25, -0.35), P(0.4, 0), P(-0.25, 0.35)], fill=fill)
+    elif kind == "messages":
+        d.line([P(-0.95, -0.8), P(0.95, -0.8), P(0.05, 0.95), P(-0.12, -0.12), P(-0.95, -0.8)], fill=fill, width=lw, joint="curve")
+    elif kind == "dots":
+        for dx in (-0.6, 0, 0.6):
+            d.ellipse([P(dx - 0.11, -0.11), P(dx + 0.11, 0.11)], fill=fill)
+    elif kind == "chevron":
+        d.line([P(-0.3, -0.6), P(0.3, 0), P(-0.3, 0.6)], fill=fill, width=lw, joint="curve")
+
+
+def _status_bar(k=1):
+    """Fixed iOS status bar (time, signal, wifi, battery)."""
+    im = Image.new("RGB", (int(SW * k), int(_pt(STATUS_PT, k))), (255, 255, 255))
+    d = ImageDraw.Draw(im)
+    d.text((_pt(62, k), _pt(31, k)), "9:41", font=font(UI_B, _pt(17, k)), fill=UI_TXT, anchor="mm")
+    for i in range(4):  # signal
+        x = 293 + i * 4.6
+        d.rounded_rectangle([_pt(x, k), _pt(35 - 3.2 - i * 2.2, k), _pt(x + 3.2, k), _pt(35, k)], radius=_pt(0.8, k), fill=UI_TXT)
+    cx, cy = _pt(323, k), _pt(35, k)
+    for r in (11, 7.2, 3.4):  # wifi
+        rr = _pt(r, k)
+        d.arc([cx - rr, cy - rr, cx + rr, cy + rr], 225, 315, fill=UI_TXT, width=max(1, int(_pt(2.1, k))))
+    d.pieslice([cx - _pt(2.6, k), cy - _pt(2.6, k), cx + _pt(2.6, k), cy + _pt(2.6, k)], 225, 315, fill=UI_TXT)
+    bx = 341
+    d.rounded_rectangle([_pt(bx, k), _pt(24, k), _pt(bx + 25, k), _pt(36, k)], radius=_pt(3.6, k),
+                        outline=(150, 150, 150), width=max(1, int(_pt(1, k))))
+    d.rounded_rectangle([_pt(bx + 2, k), _pt(26, k), _pt(bx + 19, k), _pt(34, k)], radius=_pt(2, k), fill=UI_TXT)
+    d.rounded_rectangle([_pt(bx + 26, k), _pt(28, k), _pt(bx + 27.6, k), _pt(32, k)], radius=_pt(1, k), fill=(150, 150, 150))
+    return im
+
+
+def _header(k=1):
+    im = Image.new("RGB", (int(SW * k), int(_pt(HEADER_PT, k))), (255, 255, 255))
+    d = ImageDraw.Draw(im)
+    d.text((_pt(16, k), _pt(22, k)), "Following", font=font(UI_B, _pt(22, k)), fill=UI_TXT, anchor="lm")
+    _icon(d, "chevron", 128, 23, 10, k, w=2.0)
+    _icon(d, "heart", 330, 22, 24, k)
+    _icon(d, "messages", 367, 22, 23, k)
+    return im
+
+
+def _tab_bar(k=1):
+    im = Image.new("RGB", (int(SW * k), int(_pt(TAB_PT, k))), (255, 255, 255))
+    d = ImageDraw.Draw(im)
+    d.line([(0, 0), (im.width, 0)], fill=UI_LINE, width=max(1, int(_pt(0.5, k))))
+    for i, kind in enumerate(["home", "search", "plus", "play"]):
+        _icon(d, kind, 39 + i * 78.5, 24, 24, k)
+    x, y, r = 353, 24, 13
+    d.ellipse([_pt(x - r, k), _pt(y - r, k), _pt(x + r, k), _pt(y + r, k)], fill=(205, 196, 186))
+    # Home indicator
+    d.rounded_rectangle([_pt(196.5 - 67, k), _pt(TAB_PT - 13, k), _pt(196.5 + 67, k), _pt(TAB_PT - 8, k)],
+                        radius=_pt(2.5, k), fill=UI_TXT)
+    return im
+
+
+def _photo_landscape(w, h):
+    """Procedural travel photo: dusk sky, sun, sea and two hill silhouettes."""
+    yy = np.linspace(0, 1, h)[:, None]
+    top, mid = np.array([92, 118, 168]), np.array([246, 170, 120])
+    sky = top * (1 - yy) ** 1.4 + mid * (1 - (1 - yy) ** 1.4)
+    a = np.repeat(sky[:, None, :], w, 1).reshape(h, w, 3)
+    im = Image.fromarray(a.astype(np.uint8))
+    d = ImageDraw.Draw(im)
+    d.ellipse([w * 0.56, h * 0.42, w * 0.78, h * 0.42 + w * 0.22], fill=(255, 226, 170))
+    rng = np.random.default_rng(3)
+    for base, col, amp in ((0.62, (88, 74, 96), 0.08), (0.7, (52, 46, 66), 0.06)):
+        xs = np.linspace(0, w, 40)
+        ys = h * base - h * amp * (np.sin(xs / w * 6 + rng.uniform(0, 6)) * 0.6 + rng.uniform(-0.3, 0.3, 40))
+        d.polygon([(0, h)] + list(zip(xs, ys)) + [(w, h)], fill=col)
+    d.rectangle([0, h * 0.8, w, h], fill=(40, 52, 78))
+    d.rectangle([w * 0.58, h * 0.8, w * 0.76, h * 0.805], fill=(255, 210, 160))
+    return im.filter(ImageFilter.GaussianBlur(w / 400))
+
+
+def _photo_food(w, h):
+    """Procedural food photo: top-down bowl on a warm table."""
+    im = Image.new("RGB", (w, h), (196, 150, 108))
+    d = ImageDraw.Draw(im)
+    for i in range(0, h, int(h / 9)):
+        d.rectangle([0, i, w, i + h / 18], fill=(186, 140, 98))
+    cx, cy, r = w * 0.5, h * 0.5, w * 0.36
+    d.ellipse([cx - r + w * 0.02, cy - r + w * 0.03, cx + r + w * 0.02, cy + r + w * 0.03], fill=(150, 110, 80))
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=(246, 244, 238))
+    r2 = r * 0.72
+    d.ellipse([cx - r2, cy - r2, cx + r2, cy + r2], fill=(232, 186, 92))
+    rng = np.random.default_rng(8)
+    for _ in range(26):
+        a, rr = rng.uniform(0, 6.28), rng.uniform(0, r2 * 0.8)
+        x, y, s = cx + rr * math.cos(a), cy + rr * math.sin(a), rng.uniform(w * 0.02, w * 0.05)
+        c = [(84, 140, 70), (210, 70, 50), (250, 236, 200)][rng.integers(0, 3)]
+        d.ellipse([x - s, y - s * 0.7, x + s, y + s * 0.7], fill=c)
+    return im.filter(ImageFilter.GaussianBlur(w / 500))
 
 
 @lru_cache(1)
-def feed_canvas():
-    """A tall generic social feed (no real platform branding) with the boring post on top."""
-    s = SW / 1080
-    post_h = int(1930 * s)
-    cv = Image.new("RGB", (SW, post_h * 3 + 200), (255, 255, 255))
+def feed_content():
+    """The scrolling part of the feed (stories + three posts). Returns (image at 1x, post-2 top in px)."""
+    k = K
+    Wc = int(SW * k)
+    posts_pt = [104 + 0.5]
+    post_h = 54 + 491 + 44 + 46 + 130
+    total_pt = posts_pt[0] + 3 * (post_h + 12)
+    cv = Image.new("RGB", (Wc, int(_pt(total_pt, k))), (255, 255, 255))
     d = ImageDraw.Draw(cv)
+    # Stories row
+    names = ["Your story", "maya.k", "dailyfit", "studio.no9", "leo_eats"]
+    tones = [(214, 206, 196), (198, 180, 160), (170, 186, 196), (205, 170, 150), (186, 196, 170)]
+    for i, (n, c) in enumerate(zip(names, tones)):
+        x = 10 + i * 80 + 33
+        r = 33
+        if i:
+            d.ellipse([_pt(x - r, k), _pt(8, k), _pt(x + r, k), _pt(8 + 2 * r, k)], outline=ACCENT, width=int(_pt(2.4, k)))
+        rr = r - 4.5
+        d.ellipse([_pt(x - rr, k), _pt(8 + 4.5, k), _pt(x + rr, k), _pt(8 + 4.5 + 2 * rr, k)], fill=c)
+        d.text((_pt(x, k), _pt(8 + 2 * r + 13, k)), n, font=font(UI, _pt(11.5, k)), fill=UI_TXT, anchor="mm")
+        if i == 0:
+            d.ellipse([_pt(x + 12, k), _pt(52, k), _pt(x + 32, k), _pt(72, k)], fill=(0, 149, 246), outline=(255, 255, 255), width=int(_pt(2.5, k)))
+            d.line([(_pt(x + 22, k), _pt(57, k)), (_pt(x + 22, k), _pt(67, k))], fill=(255, 255, 255), width=int(_pt(2, k)))
+            d.line([(_pt(x + 17, k), _pt(62, k)), (_pt(x + 27, k), _pt(62, k))], fill=(255, 255, 255), width=int(_pt(2, k)))
+    d.line([(0, _pt(104, k)), (Wc, _pt(104, k))], fill=UI_LINE, width=max(1, int(_pt(0.5, k))))
 
-    def post(y0, kind):
-        d.ellipse([30 * s, y0 + 20 * s, 110 * s, y0 + 100 * s], fill=(222, 222, 222))
-        draw_text(cv, "Y", font(UI_B, 40 * s), (70 * s, y0 + 75 * s), (120, 120, 120), anchor="ms")
-        name = "yourbrand" if kind == 0 else ["dailyfit", "foodspot", "travelgram"][kind % 3]
-        draw_text(cv, name, font(UI_B, 34 * s), (130 * s, y0 + 55 * s), (0, 0, 0))
-        draw_text(cv, "Sponsored" if kind == 0 else "2h", font(UI, 28 * s), (130 * s, y0 + 92 * s), (120, 120, 120))
-        draw_text(cv, "•••", font(UI_B, 34 * s), (SW - 40 * s, y0 + 70 * s), (0, 0, 0), anchor="rs")
-        iy = int(y0 + 120 * s)
-        ih = int(1350 * s)
+    def post(y, kind):
+        name = ["yourbrand", "travelgram", "foodspot"][kind]
+        sub = ["Sponsored", "Lisbon, Portugal", "Original audio"][kind]
+        d.ellipse([_pt(12, k), _pt(y + 11, k), _pt(44, k), _pt(y + 43, k)], fill=[(222, 214, 204), (170, 186, 196), (205, 170, 150)][kind])
+        d.text((_pt(28, k), _pt(y + 27.5, k)), name[0].upper(), font=font(UI_B, _pt(14, k)), fill=(255, 255, 255), anchor="mm")
+        d.text((_pt(54, k), _pt(y + 21, k)), name, font=font(UI_B, _pt(13.5, k)), fill=UI_TXT, anchor="lm")
+        d.text((_pt(54, k), _pt(y + 37, k)), sub, font=font(UI, _pt(12, k)), fill=UI_TXT, anchor="lm")
+        _icon(d, "dots", 372, y + 27, 16, k)
+        iy = y + 54
+        iw, ih = int(_pt(393, k)), int(_pt(491, k))
         if kind == 0:
             src = shot("boring", 1)
-            crop = src.crop((0, (H - 1350) // 2 + 60, W, (H - 1350) // 2 + 60 + 1350)).resize((SW, ih), Image.LANCZOS)
-            cv.paste(crop, (0, iy))
-            # The 'design': red shouty discount + yellow button.
-            fu = font(UGLY, 150 * s)
-            for dx, dy in ((4, 4), (-2, -2), (2, -2), (-2, 2)):
-                draw_text(cv, "20% OFF", fu, (SW / 2 + dx * s, iy + 220 * s + dy * s), (0, 0, 0), anchor="ms")
-            draw_text(cv, "20% OFF", fu, (SW / 2, iy + 220 * s), (230, 20, 20), anchor="ms")
-            bx0, by0, bx1, by1 = SW / 2 - 250 * s, iy + 1130 * s, SW / 2 + 250 * s, iy + 1260 * s
-            d.rounded_rectangle([bx0, by0, bx1, by1], 18, fill=(255, 221, 0), outline=(0, 0, 0), width=4)
-            draw_text(cv, "BUY NOW!!", font(UGLY, 74 * s), (SW / 2, by1 - 36 * s), (0, 0, 0), anchor="ms")
-            d.rectangle([0, iy + ih, SW, iy + ih + 90 * s], fill=(236, 240, 246))
-            draw_text(cv, "Shop now", font(UI_B, 32 * s), (36 * s, iy + ih + 58 * s), (40, 60, 110))
-            draw_text(cv, "›", font(UI_B, 44 * s), (SW - 36 * s, iy + ih + 60 * s), (40, 60, 110), anchor="rs")
+            ch = int(W * 491 / 393)
+            top = (H - ch) // 2 + 40
+            photo = src.crop((0, top, W, top + ch)).resize((iw, ih), Image.LANCZOS)
+            pd = ImageDraw.Draw(photo)
+            # The 'design': shouty red discount + yellow button, default fonts.
+            pd.text((iw / 2, ih * 0.15), "20% OFF", font=font(UGLY, iw * 0.15), fill=(230, 20, 20), anchor="mm",
+                    stroke_width=int(iw * 0.006), stroke_fill=(0, 0, 0))
+            bx0, by0, bx1, by1 = iw * 0.27, ih * 0.82, iw * 0.73, ih * 0.92
+            pd.rounded_rectangle([bx0, by0, bx1, by1], radius=iw * 0.02, fill=(255, 221, 0), outline=(0, 0, 0), width=int(iw * 0.004))
+            pd.text((iw / 2, (by0 + by1) / 2), "BUY NOW!!", font=font(UGLY, iw * 0.07), fill=(0, 0, 0), anchor="mm")
+        elif kind == 1:
+            photo = _photo_landscape(iw, ih)
         else:
-            shade = [(214, 219, 224), (232, 222, 210), (206, 222, 214)][kind % 3]
-            d.rectangle([0, iy, SW, iy + ih], fill=shade)
-            d.ellipse([SW * 0.3, iy + ih * 0.3, SW * 0.7, iy + ih * 0.62], fill=tuple(c - 25 for c in shade))
-        ay = iy + ih + (130 if kind == 0 else 40) * s
-        # Generic action icons
-        d.ellipse([34 * s, ay, 80 * s, ay + 44 * s], outline=(0, 0, 0), width=4)
-        d.ellipse([110 * s, ay, 156 * s, ay + 44 * s], outline=(0, 0, 0), width=4)
-        d.polygon([(190 * s, ay), (236 * s, ay + 22 * s), (190 * s, ay + 44 * s)], outline=(0, 0, 0))
-        cap = "yourbrand New perfume available now!! 20% off" if kind == 0 else name + " a nice day out"
-        draw_text(cv, cap, font(UI, 30 * s), (34 * s, ay + 100 * s), (20, 20, 20))
-        draw_text(cv, "#perfume #sale #buynow" if kind == 0 else "#weekend", font(UI, 30 * s), (34 * s, ay + 145 * s), (40, 70, 140))
+            photo = _photo_food(iw, ih)
+        cv.paste(photo, (0, int(_pt(iy, k))))
+        ay = iy + 491
+        if kind == 0:
+            d.rectangle([0, _pt(ay, k), Wc, _pt(ay + 44, k)], fill=(239, 239, 239))
+            d.text((_pt(14, k), _pt(ay + 22, k)), "Shop now", font=font(UI_B, _pt(14, k)), fill=UI_TXT, anchor="lm")
+            _icon(d, "chevron", 378, ay + 22, 12, k, w=2.0)
+            ay += 44
+        _icon(d, "heart", 24, ay + 23, 24, k)
+        _icon(d, "comment", 64, ay + 23, 23, k)
+        _icon(d, "share", 104, ay + 23, 22, k)
+        _icon(d, "bookmark", 372, ay + 23, 22, k)
+        ty = ay + 50
+        likes = ["12 likes", "2,481 likes", "8,903 likes"][kind]
+        d.text((_pt(14, k), _pt(ty, k)), likes, font=font(UI_B, _pt(14, k)), fill=UI_TXT, anchor="lm")
+        cap = ["New perfume available now!! 20% OFF", "golden hour never misses", "the best bowl in town"][kind]
+        fb = font(UI_B, _pt(14, k))
+        d.text((_pt(14, k), _pt(ty + 21, k)), name, font=fb, fill=UI_TXT, anchor="lm")
+        d.text((_pt(14, k) + fb.getlength(name + " "), _pt(ty + 21, k)), cap, font=font(UI, _pt(14, k)), fill=UI_TXT, anchor="lm")
+        if kind == 0:
+            d.text((_pt(14, k), _pt(ty + 40, k)), "BUY NOW link in bio #perfume #sale #buynow", font=font(UI, _pt(14, k)), fill=UI_LINK, anchor="lm")
+        d.text((_pt(14, k), _pt(ty + 61, k)), "View all 3 comments", font=font(UI, _pt(14, k)), fill=UI_GREY, anchor="lm")
+        d.text((_pt(14, k), _pt(ty + 80, k)), ["2 hours ago", "5 hours ago", "1 day ago"][kind], font=font(UI, _pt(11, k)), fill=UI_GREY, anchor="lm")
+        return y + post_h + (0 if kind else 0)
 
-    for k in range(3):
-        post(int(110 * s) + k * post_h, k)
-    return cv
-
-
-def status_bar(view):
-    s = SW / 1080
-    d = ImageDraw.Draw(view)
-    d.rectangle([0, 0, SW, 100 * s], fill=(255, 255, 255))
-    draw_text(view, "9:41", font(UI_B, 34 * s), (40 * s, 66 * s), (0, 0, 0))
-    d.rounded_rectangle([SW - 120 * s, 40 * s, SW - 50 * s, 70 * s], 6, outline=(0, 0, 0), width=3)
-    d.rectangle([SW - 116 * s, 44 * s, SW - 70 * s, 66 * s], fill=(0, 0, 0))
+    y = posts_pt[0]
+    tops = []
+    for kind in range(3):
+        tops.append(y)
+        y = post(y, kind) + 12
+    small = cv.resize((SW, int(cv.height / k)), Image.LANCZOS)
+    return small, _pt(tops[1], 1)
 
 
 @lru_cache(1)
-def thumb_sprite():
-    t = Image.open(os.path.join(R, "thumb", "0001.png")).convert("RGBA")
-    bb = t.getbbox()
-    t = t.crop(bb)
-    sc = 560 / t.width
-    t = t.resize((int(t.width * sc), int(t.height * sc)), Image.LANCZOS)
-    # The render ends where the digit is cut; continue the base down-right along its axis.
-    ext, slope = 900, math.tan(math.radians(24))
-    big = Image.new("RGBA", (t.width + int(ext * slope) + 20, t.height + ext), (0, 0, 0, 0))
-    big.paste(t, (0, 0))
-    a = np.asarray(t.getchannel("A"))
-    last = max(i for i in range(t.height - 1, 0, -1) if a[i].max() > 200 and a[i].sum() > 255 * 80)
-    row = t.crop((0, last - 6, t.width, last - 5))
-    for k in range(t.height - last + ext + 6):
-        big.paste(row, (int(k * slope), last - 6 + k), row)
-    big.paste(t.crop((0, 0, t.width, last - 6)), (0, 0), t.crop((0, 0, t.width, last - 6)))
-    t = big
-    sh = Image.new("RGBA", t.size, (0, 0, 0, 0))
-    sh.putalpha(t.getchannel("A").point(lambda v: int(v * 0.35)).filter(ImageFilter.GaussianBlur(22)))
-    return t, sh
+def phone_layers():
+    """Static device chrome: shadow, body (frame, buttons, bezel) and the glass overlay; plus the screen mask."""
+    k = K
+    pw, ph = (PHONE[2] - PHONE[0]) * k, (PHONE[3] - PHONE[1]) * k
+    pad = 20 * k
+    body = Image.new("RGBA", (pw + 2 * pad, ph + 2 * pad), (0, 0, 0, 0))
+    d = ImageDraw.Draw(body)
+    ti_dark, ti_mid, ti_hi = (38, 37, 40, 255), (70, 69, 74, 255), (150, 148, 152, 255)
+    # Side buttons (action, volume up/down on the left, side button on the right).
+    for (x0, y0, y1) in ((-5, 250, 300), (-5, 360, 450), (-5, 480, 570)):
+        d.rounded_rectangle([pad + x0 * k, pad + y0 * k, pad + 10 * k, pad + y1 * k], radius=4 * k, fill=ti_mid)
+    d.rounded_rectangle([pad + pw - 10 * k, pad + 400 * k, pad + pw + 5 * k, pad + 560 * k], radius=4 * k, fill=ti_mid)
+    # Titanium frame with a bright machined edge, then the black bezel.
+    d.rounded_rectangle([pad, pad, pad + pw, pad + ph], radius=R_OUT * k, fill=ti_dark)
+    d.rounded_rectangle([pad + 1.5 * k, pad + 1.5 * k, pad + pw - 1.5 * k, pad + ph - 1.5 * k], radius=R_OUT * k - 2 * k,
+                        outline=ti_hi, width=int(2 * k))
+    d.rounded_rectangle([pad + 4 * k, pad + 4 * k, pad + pw - 4 * k, pad + ph - 4 * k], radius=R_OUT * k - 4 * k,
+                        outline=ti_mid, width=int(3 * k))
+    d.rounded_rectangle([pad + FRAME_W * k, pad + FRAME_W * k, pad + pw - FRAME_W * k, pad + ph - FRAME_W * k],
+                        radius=(R_OUT - FRAME_W) * k, fill=(6, 6, 7, 255))
+    # Cut the screen out.
+    hole = Image.new("L", body.size, 0)
+    ImageDraw.Draw(hole).rounded_rectangle([pad + BEZEL * k, pad + BEZEL * k, pad + pw - BEZEL * k, pad + ph - BEZEL * k],
+                                           radius=R_SCR * k, fill=255)
+    body.putalpha(ImageChops.subtract(body.getchannel("A"), hole))
+    body = body.resize((body.width // k, body.height // k), Image.LANCZOS)
+    smask = hole.resize(body.size, Image.LANCZOS).crop((pad // k + BEZEL, pad // k + BEZEL, pad // k + BEZEL + SW, pad // k + BEZEL + SH))
+    # Glass: Dynamic Island, a soft diagonal reflection and a faint inner edge.
+    glass = Image.new("RGBA", (SW * k, SH * k), (0, 0, 0, 0))
+    g = ImageDraw.Draw(glass)
+    iw, ih, it = _pt(126, k), _pt(37, k), _pt(11, k)
+    g.rounded_rectangle([SW * k / 2 - iw / 2, it, SW * k / 2 + iw / 2, it + ih], radius=ih / 2, fill=(0, 0, 0, 255))
+    g.ellipse([SW * k / 2 + iw / 2 - ih * 0.78, it + ih * 0.3, SW * k / 2 + iw / 2 - ih * 0.38, it + ih * 0.7], fill=(18, 20, 30, 255))
+    glass = glass.resize((SW, SH), Image.LANCZOS)
+    yy, xx = np.mgrid[0:SH, 0:SW].astype(np.float32)
+    diag = (xx / SW * 0.9 + yy / SH * 0.45)
+    refl = np.clip(1 - np.abs(diag - 0.42) / 0.16, 0, 1) ** 2 * 0.07 + np.clip(0.3 - diag, 0, 0.3) * 0.12
+    edge = np.minimum.reduce([xx, yy, SW - 1 - xx, SH - 1 - yy])
+    inner = np.clip(1 - edge / 10, 0, 1) * 0.10
+    ref = np.zeros((SH, SW, 4), np.float32)
+    ref[..., :3] = 255
+    ref[..., 3] = refl * 255
+    reflection = Image.fromarray(ref.astype(np.uint8), "RGBA")
+    shade = np.zeros((SH, SW, 4), np.uint8)
+    shade[..., 3] = (inner * 255).astype(np.uint8)
+    glass = Image.alpha_composite(Image.alpha_composite(Image.fromarray(shade, "RGBA"), reflection), glass)
+    # Soft contact shadow under the whole device.
+    sh = Image.new("L", (body.width + 200, body.height + 200), 0)
+    ImageDraw.Draw(sh).rounded_rectangle([100 + pad // k + 20, 100 + pad // k + 60, 100 + pad // k + pw // k - 20, 100 + pad // k + ph // k + 30],
+                                          radius=R_OUT, fill=150)
+    sh = sh.filter(ImageFilter.GaussianBlur(45))
+    return body, smask, glass, sh, pad // k
+
+
+@lru_cache(1)
+def fixed_bars():
+    return _status_bar(), _header(), _tab_bar()
+
+
+def screen_view(f):
+    """The phone screen at frame f: fixed bars + scrolling feed with velocity motion blur."""
+    content, post2 = feed_content()
+    sbar, hbar, tbar = fixed_bars()
+    top = sbar.height + hbar.height
+    vis_h = SH - top - tbar.height
+    # Scroll: a short drag, then an iOS-style fling that decays onto the next post.
+    drag_end, end = 82, 101
+    target = post2
+
+    def off(t):
+        if t <= 78:
+            return 0.0
+        if t <= drag_end:
+            return 34 * ease_in_out((t - 78) / (drag_end - 78))
+        x = clamp((t - drag_end) / (end - drag_end))
+        return 34 + (target - 34) * (1 - math.exp(-5.2 * x)) / (1 - math.exp(-5.2))
+
+    o = off(f)
+    vel = off(f + 0.5) - off(f - 0.5)
+    view = Image.new("RGB", (SW, SH), (255, 255, 255))
+    if vel > 3:
+        n = int(clamp(vel / 3, 8, 64))
+        acc = np.zeros((vis_h, SW, 3), np.float32)
+        for i in range(n):
+            oo = int(o + vel * 0.9 * (i / (n - 1) - 0.5))
+            acc += np.asarray(content.crop((0, oo, SW, oo + vis_h)), np.float32)
+        strip = Image.fromarray((acc / n).astype(np.uint8))
+    else:
+        strip = content.crop((0, int(o), SW, int(o) + vis_h))
+    view.paste(strip, (0, top))
+    view.paste(sbar, (0, 0))
+    view.paste(hbar, (0, sbar.height))
+    view.paste(tbar, (0, SH - tbar.height))
+    # Scroll indicator while moving.
+    vis = clamp(min(prog(f, 79, 81), 1 - prog(f, 102, 108)))
+    if vis > 0:
+        frac = vis_h / content.height
+        y0 = top + (o / content.height) * vis_h
+        d = ImageDraw.Draw(view, "RGBA")
+        d.rounded_rectangle([SW - 9, y0 + 4, SW - 5, y0 + 4 + vis_h * frac], radius=2, fill=(0, 0, 0, int(110 * vis)))
+    return view
 
 
 def sec_boring(f):
-    img = Image.new("RGB", (W, H), (22, 21, 20))
-    tag(img, "A — THE USUAL AD", f, 30)
-    # Scroll: hold, then a flick with ease-in-out over 20 frames.
-    s_p = ease_in_out(prog(f, 78, 97))
-    off = s_p * 1850 * (SW / 1080)
-    vel = 0.0
-    if 78 <= f <= 97:
-        vel = 1850 * (SW / 1080) * (ease_in_out(prog(f + 0.5, 78, 97)) - ease_in_out(prog(f - 0.5, 78, 97)))
-    cv = feed_canvas()
-    view = cv.crop((0, int(off), SW, int(off) + SH))
-    if vel > 4:
-        # Motion blur along the scroll direction.
-        n = 6
-        acc = np.zeros((SH, SW, 3), np.float32)
-        for k in range(n):
-            o = int(off + vel * (k / (n - 1) - 0.5))
-            acc += np.asarray(cv.crop((0, o, SW, o + SH)), np.float32)
-        view = Image.fromarray((acc / n).astype(np.uint8))
-    view = view.copy()
-    status_bar(view)
+    img = Image.new("RGB", (W, H), PAPER)
+    tag(img, "A — THE USUAL AD", f, 30, y=140, color=INK)
+    view = screen_view(f)
     failed = f >= 100
     if failed:
         view = bw(view, (0.95, 0.95, 0.95), 0.9)
         view = Image.blend(view, Image.new("RGB", view.size, (0, 0, 0)), 0.6)
-    # Screen with rounded corners on the dark page.
-    m = Image.new("L", (SW, SH), 0)
-    ImageDraw.Draw(m).rounded_rectangle([0, 0, SW - 1, SH - 1], 46, fill=255)
-    img.paste(view, SCREEN[:2], m)
-    ImageDraw.Draw(img).rounded_rectangle([SCREEN[0] - 3, SCREEN[1] - 3, SCREEN[2] + 2, SCREEN[3] + 2], 49,
-                                          outline=(60, 58, 55), width=3)
-    # Thumb: enters, presses, drags up, leaves.
-    t, sh = thumb_sprite()
-    tip = (600, 1360)
-    if 58 <= f <= 112:
-        e = ease_out(prog(f, 58, 74))
-        x = tip[0] + (1 - e) * 500
-        y = tip[1] + (1 - e) * 700
-        drag = ease_in_out(prog(f, 78, 92))
-        y -= drag * 640
-        x -= drag * 60
-        leave = ease_in_out(prog(f, 94, 110))
-        x += leave * 520
-        y += leave * 900
-        press = 1 - 0.03 * (1 if 75 <= f <= 92 else 0)
-        tt = t if press == 1 else t.resize((int(t.width * press), int(t.height * press)), Image.LANCZOS)
-        # sprite tip is near its top-left; offset so the nail lands on (x, y)
-        px, py = int(x - tt.width * 0.18), int(y - tt.height * 0.06)
-        img.paste((0, 0, 0), (px + 26, py + 34), sh.resize(tt.size) if sh.size != tt.size else sh)
-        img.paste(tt, (px, py), tt)
-        if 75 <= f <= 82:
-            q = prog(f, 75, 82)
-            d = ImageDraw.Draw(img)
-            rr = 30 + q * 70
-            d.ellipse([tip[0] - rr, tip[1] - rr, tip[0] + rr, tip[1] + rr], outline=(255, 255, 255), width=int(5 * (1 - q)) + 1)
+    body, smask, glass, sh, pad = phone_layers()
+    img.paste(INK, (PHONE[0] - pad - 100, PHONE[1] - pad - 100), sh)
+    img.paste(view, SCREEN[:2], smask)
+    img.paste(glass, SCREEN[:2], glass)
+    img.paste(body, (PHONE[0] - pad, PHONE[1] - pad), body)
     if failed:
         d = ImageDraw.Draw(img)
-        cx, cy, L = W // 2, 900, 300
+        cx, cy, L = W // 2, 900, 270
         p1 = ease_out(prog(f, 100, 104))
         p2 = ease_out(prog(f, 103, 107))
         if p1 > 0:
-            d.line([(cx - L, cy - L), (cx - L + 2 * L * p1, cy - L + 2 * L * p1)], fill=ACCENT, width=64)
+            d.line([(cx - L, cy - L), (cx - L + 2 * L * p1, cy - L + 2 * L * p1)], fill=ACCENT, width=60)
         if p2 > 0:
-            d.line([(cx + L, cy - L), (cx + L - 2 * L * p2, cy - L + 2 * L * p2)], fill=ACCENT, width=64)
-        rise_text(img, "Scrolled past.", font(SERIF, 120), (W / 2, 1420), BONE, f, 104, 6, anchor="ms")
-        rise_text(img, "Nobody saw it.", font(SERIF_I, 120), (W / 2, 1545), BONE, f, 108, 6, anchor="ms")
-    return img, "bw" if failed else "color"
+            d.line([(cx + L, cy - L), (cx + L - 2 * L * p2, cy - L + 2 * L * p2)], fill=ACCENT, width=60)
+        rise_text(img, "Scrolled past.", font(SERIF, 112), (W / 2, 1400), BONE, f, 104, 6, anchor="ms")
+        rise_text(img, "Nobody saw it.", font(SERIF_I, 112), (W / 2, 1518), BONE, f, 108, 6, anchor="ms")
+    # Gentle push-in on the device for the whole section.
+    img = zoom(img, 1 + 0.03 * ease_in_out(prog(f, 30, 119)))
+    return img, "paper"
 
 
 # ------------------------------------------------------------------ C: Halfsecond version
@@ -477,24 +685,24 @@ def sec_half(f):
             rise_text(img, v, font(SERIF_I, 110), (W - 80, y + 6), BONE, fr, fin, 6, anchor="rs")
     elif fr >= 255:
         if fr < 300:
-            rise_text(img, "VELOUR", font(SERIF, 210), (W / 2, 470), BONE, fr, 256, 8, anchor="ms", tracking=24)
-            draw_text(img, "N°05  ·  EAU DE PARFUM", font(MONO, 32), (W / 2, 560), (210, 190, 170), anchor="ms",
+            rise_text(img, "VELOUR", font(SERIF, 210), (W / 2, 470), INK, fr, 256, 8, anchor="ms", tracking=24)
+            draw_text(img, "N°05  ·  EAU DE PARFUM", font(MONO, 32), (W / 2, 560), INK, anchor="ms",
                       tracking=4, alpha=prog(fr, 262, 268))
         else:
-            draw_text(img, "VELOUR  N°05", font(MONO, 32), (W / 2, 250), (225, 205, 185), anchor="ms", tracking=6)
-            rise_text(img, "20% off,", font(SERIF, 150), (W / 2, 420), BONE, fr, 300, 6, anchor="ms")
-            rise_text(img, "this week only.", font(SERIF_I, 150), (W / 2, 560), BONE, fr, 304, 6, anchor="ms")
+            draw_text(img, "VELOUR  N°05", font(MONO, 32), (W / 2, 250), INK, anchor="ms", tracking=6)
+            rise_text(img, "20% off,", font(SERIF, 150), (W / 2, 420), INK, fr, 300, 6, anchor="ms")
+            rise_text(img, "this week only.", font(SERIF_I, 150), (W / 2, 560), INK, fr, 304, 6, anchor="ms")
             p = ease_out(prog(fr, 312, 320))
             if p > 0:
                 fm = font(MONO_B, 36)
                 txt = "SHOP THE DROP"
                 tw = text_w(txt, fm, 4) + 70
-                draw_text(img, txt, fm, (W / 2 - 35, 650), ACCENT, anchor="ms", tracking=4, alpha=p)
+                draw_text(img, txt, fm, (W / 2 - 35, 650), INK, anchor="ms", tracking=4, alpha=p)
                 ax = W / 2 + tw / 2 - 40  # arrow drawn by hand (the mono font has no arrow glyph)
                 d = ImageDraw.Draw(img)
-                d.line([(ax, 638), (ax + 40, 638)], fill=ACCENT, width=4)
-                d.line([(ax + 26, 626), (ax + 40, 638), (ax + 26, 650)], fill=ACCENT, width=4)
-                ImageDraw.Draw(img).line([(W / 2 - tw / 2, 668), (W / 2 - tw / 2 + tw * p, 668)], fill=ACCENT, width=3)
+                d.line([(ax, 638), (ax + 40, 638)], fill=INK, width=4)
+                d.line([(ax + 26, 626), (ax + 40, 638), (ax + 26, 650)], fill=INK, width=4)
+                ImageDraw.Draw(img).line([(W / 2 - tw / 2, 668), (W / 2 - tw / 2 + tw * p, 668)], fill=INK, width=3)
     # Running counter: the whole Halfsecond version is still sold inside the first beat.
     if fr < 255:
         draw_text(img, f"{(fr - 120) / 30:04.1f}s", font(MONO, 30), (W - 80, 148), (200, 190, 175), anchor="rs", tracking=2)

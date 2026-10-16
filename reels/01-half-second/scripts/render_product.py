@@ -195,11 +195,11 @@ def build_bottle():
     return root
 
 
-def sweep(color=(0.02, 0.02, 0.022), rough=0.25, size=40):
+def sweep(color=(0.02, 0.02, 0.022), rough=0.25, size=40, floor=None):
     """Seamless floor + backdrop."""
     bpy.ops.mesh.primitive_plane_add(size=size, location=(0, 0, 0))
     f = bpy.context.object
-    f.data.materials.append(mat_principled("floor", color, rough=rough))
+    f.data.materials.append(mat_principled("floor", floor or color, rough=rough))
     bpy.ops.mesh.primitive_plane_add(size=size, location=(0, 12, size / 2), rotation=(math.radians(90), 0, 0))
     b = bpy.context.object
     b.data.materials.append(mat_principled("back", color, rough=0.8))
@@ -329,16 +329,30 @@ def shot_sweep(scn):
     scn.frame_start, scn.frame_end = 1, 30
 
 
+# Brand palette (matches the halfsecond profile picture), linear RGB for Blender.
+BRAND_ORANGE = (1.0, 0.074, 0.016)   # #FF4D22
+BRAND_BONE = (0.871, 0.815, 0.723)   # #F0E9DD
+
+
 def shot_hero(scn):
-    """Slow turntable on a warm burgundy sweep — the colour hero."""
+    """Slow turntable on a brand-coloured sweep — the colour hero.
+
+    HERO_BG=orange (default) or bone picks the backdrop.
+    """
+    bg = os.environ.get("HERO_BG", "orange")
     world((0.0, 0.0, 0.0), 0)
-    sweep((0.16, 0.02, 0.03), rough=0.35)
+    if bg == "bone":
+        sweep(tuple(c * 0.55 for c in BRAND_BONE), rough=0.45)
+        back = (1.0, 0.35, 0.12)
+    else:
+        sweep(BRAND_ORANGE, rough=0.22, floor=(0.006, 0.0055, 0.005))
+        back = (1.0, 0.75, 0.6)
     b = build_bottle()
-    area("key", (-2.6, -2.6, 2.8), (0, 0, 0.7), 1.8, 300, (1.0, 0.86, 0.72))
-    area("fill", (2.8, -2.0, 1.2), (0, 0, 0.7), 2.5, 70, (1.0, 0.8, 0.8))
-    area("rimL", (-2.0, 1.8, 1.6), (0, 0, 0.8), 0.6, 260, (1.0, 0.75, 0.5), size_y=3.0)
-    area("rimR", (2.0, 1.8, 1.6), (0, 0, 0.8), 0.6, 200, (1.0, 0.75, 0.6), size_y=3.0)
-    area("backlight", (0, 3.5, 1.5), (0, 12, 2.0), 3.0, 500, (1.0, 0.3, 0.25))
+    area("key", (-2.6, -2.6, 2.8), (0, 0, 0.7), 1.8, 300, (1.0, 0.92, 0.84))
+    area("fill", (2.8, -2.0, 1.2), (0, 0, 0.7), 2.5, 70, (1.0, 0.95, 0.9))
+    area("rimL", (-2.0, 1.8, 1.6), (0, 0, 0.8), 0.6, 300, (1.0, 0.95, 0.9), size_y=3.0)
+    area("rimR", (2.0, 1.8, 1.6), (0, 0, 0.8), 0.6, 240, (1.0, 0.95, 0.9), size_y=3.0)
+    area("backlight", (0, 3.5, 1.5), (0, 12, 2.0), 3.5, 1100, back)
     strip("stripL", (-1.6, -1.4, 0.9), (0, 0, 0.8), 0.25, 3.0, 12)
     strip("stripR", (1.7, -1.0, 0.9), (0, 0, 0.8), 0.18, 3.0, 8)
     # Framed low so the top third stays clean for the title/offer typography.
@@ -460,8 +474,9 @@ def main():
         scn.render.resolution_x, scn.render.resolution_y = 900, 1400
     if frames:
         scn.frame_start, scn.frame_end = frames
-    os.makedirs(os.path.join(OUT, shot), exist_ok=True)
-    scn.render.filepath = os.path.join(OUT, shot, "####")
+    out = os.environ.get("OUTNAME", shot)
+    os.makedirs(os.path.join(OUT, out), exist_ok=True)
+    scn.render.filepath = os.path.join(OUT, out, "####")
     bpy.ops.render.render(animation=True)
 
 

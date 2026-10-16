@@ -7,15 +7,28 @@ First reel for **halfsecond**. It's 15 s, vertical 1080×1920, 30 fps, built in 
 | `build/halfsecond_reel_01.mp4` | Final reel with music and SFX, ready to upload |
 | `build/halfsecond_reel_01_no_music.mp4` | Same picture, SFX only. Use it if you want to add a trending sound inside Instagram. |
 | `build/cover.jpg` | Cover frame for the grid |
+| `assets/pfp/halfsecond_pfp.png` | Instagram profile picture: cream, black ring, orange half. It matches the end card. |
+| `assets/pfp/halfsecond_pfp_dark.png` | Dark profile picture alternative |
+| `build/v1/` | The previous version (red hero, thumb scroll), kept for reference |
 
 ## Timeline (120 BPM, so 1 beat = 0.5 s = 15 frames)
 
 | Time | Frames | Section |
 |---|---|---|
 | 0.0–1.0 s | 0–29 | Black stopwatch card with a big **0.5s** and four clock ticks. "That's how long your ad gets." |
-| 1.0–4.0 s | 30–119 | **A — The usual ad.** Flat catalogue shot in a feed with "20% OFF / BUY NOW!!". A thumb flicks past it, the screen drains to grey, a red ✕ appears, then "Scrolled past. Nobody saw it." |
-| 4.0–12.0 s | 120–359 | **B — The Halfsecond version.** The hook "They'll ask what you're wearing." is on the very first frame. After that it's macro close-ups, a whip turn, a three-panel split, the bottle dropping in, a light sweep with scent notes and the hero turntable. It ends with the same offer done properly: "20% off, this week only. SHOP THE DROP →". Every cut lands on the beat grid. |
+| 1.0–4.0 s | 30–119 | **A — The usual ad.** A realistic phone (titanium frame, side buttons, Dynamic Island, glass reflection) shows an unbranded social feed: status bar, stories, the sponsored post with "20% OFF / BUY NOW!!", action icons and a tab bar. The feed is dragged, then flicked past the ad with iOS-style deceleration, motion blur and a scroll indicator, with no hand on screen. The screen then drains to grey, an orange ✕ appears, and "Scrolled past. Nobody saw it." |
+| 4.0–12.0 s | 120–359 | **B — The Halfsecond version.** The hook "They'll ask what you're wearing." is on the very first frame. After that it's macro close-ups, a whip turn, a three-panel split, the bottle dropping in, a light sweep with scent notes and the hero turntable. It ends on the hero shot (brand-orange wall, black gloss floor), with the same offer done properly: "20% off, this week only. SHOP THE DROP →". Every cut lands on the beat grid. |
 | 12.0–15.0 s | 360–449 | End card with the halfsecond logo (half-filled stopwatch disc), "Your brand next? DM us." and the line "Ads built for the first half second". |
+
+## Brand palette
+
+The whole reel uses the profile picture's three colours. The values are in `STYLE` in `scripts/compose.py` and `BRAND_*` in `scripts/render_product.py`.
+
+| Colour | Hex | Where it is used |
+|---|---|---|
+| Ink | `#0E0D0C` | Intro background, phone, the hero's black floor, hero text |
+| Cream | `#ECE5D8` / `#F0E9DD` | Section A background, end card, hook text |
+| Signal orange | `#FF4D22` | The "s" in 0.5s, stopwatch ring, ✕, hook underline, story rings, hero wall, logo half |
 
 ## The product
 
@@ -32,8 +45,7 @@ To use your own product (sneakers, watch, etc.), film short phone clips and put 
 | `whip` | Fast spin into a front view | 15 |
 | `drop` | Product drops into frame and lands | 15 |
 | `sweep` | Dark product, a single light passes across it | 30 |
-| `hero` | Slow turntable on a coloured backdrop (top third clear for text) | 45 |
-| `thumb` | Thumb sprite, transparent PNG | 1 |
+| `hero` | Slow turntable on a brand-orange backdrop (top third clear for text) | 45 |
 
 ## Rebuild
 
