@@ -1,0 +1,4 @@
+# Regenerable intermediates
+build/picture.mp4
+build/frame_*.jpg
+__pycache__/
