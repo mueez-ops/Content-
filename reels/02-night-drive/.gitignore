@@ -1,3 +1,4 @@
 source/
 build/frames/
 __pycache__/
+render.log
