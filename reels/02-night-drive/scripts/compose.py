@@ -478,13 +478,26 @@ def wordmark(size):
     return a[:, max(0, cols[0] - 4):cols[-1] + 4]
 
 
+GLOW = None
+
+
+def _init_glow():
+    global GLOW
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    r = np.sqrt(((xx - W / 2) / 520) ** 2 + ((yy - 820) / 420) ** 2)
+    GLOW = (np.exp(-r ** 2 * 1.6) * 0.10)[..., None] * ACC
+
+
 def endcard(f, rng):
     k = f - T.END
     x = np.ones((H, W, 3), np.float32) * INK
     sm, sfps = overlay_frames("smoke", 2.0, T.NF - T.END)
     o = sm[min(len(sm) - 1, int(k / T.FPS * sfps))].astype(np.float32) / 255
     x = screen(x, o * np.array([1.0, 0.8, 0.7], np.float32), 0.16)
-    # warm floor glow behind the logo
+    # soft signal-orange glow behind the logo, breathing slightly
+    if GLOW is None:
+        _init_glow()
+    x = x + GLOW * (0.75 + 0.25 * math.sin(k / 9)) * clamp(k / 10)
     draw_logo(x, W / 2, 800, 1.05, clamp(k / 14), clamp((k - 4) / 10))
     if k >= 12:
         n = min(26, (k - 11) * 3)
@@ -553,9 +566,9 @@ def render_shot(si, s, only=None):
             z *= 1 + 0.12 * (1 - eo(k / 5)); ca = 0.007 * (1 - k / 6); shake += 14 * (1 - k / 6)
         elif tin == "drop":
             z *= 1 + 0.28 * (1 - eo(k / 9)); ca = 0.016 * max(0, 1 - k / 10)
-            fl = max(0, 1 - k / 7) ** 1.5; shake += 34 * max(0, 1 - k / 18)
+            fl = max(0, 1 - k / 4) ** 1.5; shake += 34 * max(0, 1 - k / 18)
         elif tin in ("flash", "flash_s") and k < 5:
-            fl = (0.85 if tin == "flash" else 0.45) * (1 - k / 5) ** 2
+            fl = (0.6 if tin == "flash" else 0.4) * (1 - k / 4) ** 2
             z *= 1 + 0.06 * (1 - eo(k / 5))
         elif tin == "zoom" and k < 6:
             z *= 1 + 0.55 * (1 - eo(k / 5)); zb = 0.22 * (1 - k / 6)
@@ -571,8 +584,8 @@ def render_shot(si, s, only=None):
         elif s["tout"] == "whip" and n_out < 3:
             q = 1 - n_out / 3
             dx -= W * 0.7 * q ** 2; wb = max(wb, 120 * q)
-        elif s["tout"] == "whiteout" and n_out < 7:
-            fl = max(fl, (1 - n_out / 7) ** 2)
+        elif s["tout"] == "whiteout" and n_out < 4:
+            fl = max(fl, (1 - n_out / 4) ** 2)
         shake += 22 * s["shake"]
         # global accent hits
         if T.BACK <= f < T.BACK + 8:
@@ -595,7 +608,7 @@ def render_shot(si, s, only=None):
         x = grade(x, s["grade"])
         if T.BREAK <= f < T.BACK:
             lum = x @ np.array([0.2126, 0.7152, 0.0722], np.float32)
-            x = (lum[..., None] * 0.7 + x * 0.3) * 0.85
+            x = (lum[..., None] * 0.7 + x * 0.3) * 1.6
         if ov is not None and f >= s["overlay"][1]:
             fr, ofps = ov
             o = fr[min(len(fr) - 1, int((f - s["overlay"][1]) / T.FPS * ofps))].astype(np.float32) / 255

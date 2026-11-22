@@ -26,17 +26,18 @@ loud() {  # two-pass loudness normalisation to -11 LUFS / -1 dBTP
 loud audio/mix.wav "$B/mix_norm.wav"
 loud audio/sfx.wav "$B/sfx_norm.wav"
 
-X264=(-c:v libx264 -preset slow -crf 14 -pix_fmt yuv420p -profile:v high -level 4.2
+X264=(-c:v libx264 -preset slow -crf 16 -maxrate 30M -bufsize 60M -pix_fmt yuv420p -profile:v high -level 4.2
       -x264-params "keyint=60:min-keyint=30:aq-mode=3:psy-rd=1.0,0.15:deblock=-1,-1"
       -color_primaries bt709 -color_trc bt709 -colorspace bt709 -movflags +faststart)
 
 ffmpeg -v error -y -framerate 30 -i "$FR" -i "$B/mix_norm.wav" "${X264[@]}" \
   -c:a aac -b:a 320k -ar 48000 -shortest "$B/halfsecond_reel_02.mp4"
-ffmpeg -v error -y -framerate 30 -i "$FR" -i "$B/sfx_norm.wav" "${X264[@]}" \
-  -c:a aac -b:a 320k -ar 48000 -shortest "$B/halfsecond_reel_02_no_music.mp4"
+# same video stream, SFX-only audio
+ffmpeg -v error -y -i "$B/halfsecond_reel_02.mp4" -i "$B/sfx_norm.wav" -map 0:v -map 1:a -c:v copy \
+  -c:a aac -b:a 320k -ar 48000 -shortest -movflags +faststart "$B/halfsecond_reel_02_no_music.mp4"
 ffmpeg -v error -y -framerate 30 -i "$FR" -i "$B/mix_norm.wav" \
   -vf "scale=2160:3840:flags=lanczos,unsharp=5:5:0.35:5:5:0.0" \
-  -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p -profile:v high -level 5.2 \
+  -c:v libx264 -preset slow -crf 18 -maxrate 40M -bufsize 80M -pix_fmt yuv420p -profile:v high -level 5.2 \
   -color_primaries bt709 -color_trc bt709 -colorspace bt709 -movflags +faststart \
   -c:a aac -b:a 320k -ar 48000 -shortest "$B/halfsecond_reel_02_4k.mp4"
 ffmpeg -v error -y -i "$B/frames/0420.png" -q:v 2 "$B/cover.jpg"
